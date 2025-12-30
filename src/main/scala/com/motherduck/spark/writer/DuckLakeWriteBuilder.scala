@@ -1,0 +1,163 @@
+package com.motherduck.spark.writer
+
+import com.motherduck.spark.catalog.DuckLakeClient
+import org.apache.spark.sql.connector.write._
+import org.apache.spark.sql.types.StructType
+import org.slf4j.LoggerFactory
+
+/**
+ * WriteBuilder for DuckLake tables.
+ *
+ * Creates BatchWrite instances that handle the actual write operation.
+ * This is where we control file tracking and DuckLake registration.
+ *
+ * @param tableName  Full table name (schema.table)
+ * @param schema     Spark schema for the table
+ * @param connection DuckLake connection string
+ * @param dataPath   Job-specific data path (includes job subfolder)
+ * @param client     Shared DuckLakeCatalogClient for metadata operations
+ */
+class DuckLakeWriteBuilder(
+    tableName: String,
+    schema: StructType,
+    connection: String,
+    dataPath: String,
+    client: DuckLakeClient
+) extends WriteBuilder {
+
+  private val logger = LoggerFactory.getLogger(classOf[DuckLakeWriteBuilder])
+
+  logger.info(s"DuckLakeWriteBuilder created for table: $tableName, dataPath: $dataPath")
+
+  override def build(): Write = {
+    new DuckLakeWrite(tableName, schema, connection, dataPath, client)
+  }
+}
+
+/**
+ * Write implementation that provides BatchWrite for batch operations.
+ */
+class DuckLakeWrite(
+    tableName: String,
+    schema: StructType,
+    connection: String,
+    dataPath: String,
+    client: DuckLakeClient
+) extends Write {
+
+  private val logger = LoggerFactory.getLogger(classOf[DuckLakeWrite])
+
+  override def toBatch: BatchWrite = {
+    logger.info(s"Creating BatchWrite for table: $tableName")
+    new DuckLakeBatchWrite(tableName, schema, connection, dataPath, client)
+  }
+
+  override def description(): String = s"DuckLakeWrite($tableName)"
+}
+
+/**
+ * BatchWrite implementation for DuckLake.
+ *
+ * @param tableName  Full table name (schema.table format)
+ * @param schema     Spark schema for the table
+ * @param connection DuckLake connection string
+ * @param dataPath   Job-specific data path where files will be written
+ * @param client     Shared DuckLakeCatalogClient for file registration
+ */
+class DuckLakeBatchWrite(
+    tableName: String,
+    schema: StructType,
+    connection: String,
+    dataPath: String,
+    client: DuckLakeClient
+) extends BatchWrite {
+
+  private val logger = LoggerFactory.getLogger(classOf[DuckLakeBatchWrite])
+
+  // Parse schema.table into components
+  private val (schemaName, tableNameOnly) = {
+    val parts = tableName.split("\\.", 2)
+    if (parts.length == 2) (parts(0), parts(1))
+    else ("main", parts(0))
+  }
+
+  override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = {
+    logger.info(s"Creating DataWriterFactory for table: $tableName, " +
+                s"numPartitions: ${info.numPartitions()}, dataPath: $dataPath")
+
+    new DuckLakeDataWriterFactory(tableName, schema, dataPath)
+  }
+
+  override def commit(messages: Array[WriterCommitMessage]): Unit = {
+    logger.info(s"BatchWrite.commit() called with ${messages.length} task messages")
+
+    // Collect all files from all tasks
+    val allFiles = messages.flatMap {
+      case msg: DuckLakeWriterCommitMessage => msg.files
+      case null =>
+        // Task wrote no data
+        Seq.empty
+      case other =>
+        logger.warn(s"Unexpected commit message type: ${other.getClass}")
+        Seq.empty
+    }
+
+    logger.info(s"Total files to register: ${allFiles.length}")
+    allFiles.foreach(f => logger.debug(s"  File: $f"))
+
+    if (allFiles.nonEmpty) {
+      registerFilesWithDuckLake(allFiles)
+    } else {
+      logger.info("No files to register - write operation complete (no data written)")
+    }
+  }
+
+  override def abort(messages: Array[WriterCommitMessage]): Unit = {
+    logger.warn(s"BatchWrite.abort() called with ${messages.length} task messages")
+
+    // Collect files that were written but need cleanup
+    val allFiles = messages.flatMap {
+      case msg: DuckLakeWriterCommitMessage => msg.files
+      case _ => Seq.empty
+    }
+
+    if (allFiles.nonEmpty) {
+      logger.warn(s"Aborting: ${allFiles.length} files were written but won't be registered")
+      // Note: Files remain on storage (S3/local) but are orphaned
+      // DuckLake doesn't know about them since we never registered them
+      // TODO: Optionally delete the orphaned files via Hadoop FileSystem API
+      allFiles.foreach(f => logger.warn(s"  Orphaned file: $f"))
+    }
+  }
+
+  /**
+   * Register written Parquet files with DuckLake catalog.
+   *
+   * Uses DuckDB JDBC to call ducklake_add_data_files() for each file.
+   * Files are registered in the order they were written.
+   * Uses the shared client from the catalog - TODO: maybe actually use the instance cache
+   * // TODO: should all files get registered in a transaction to avoid partial writes? what's a good unit of concurrency here?
+   */
+  private def registerFilesWithDuckLake(files: Seq[String]): Unit = {
+    logger.info(s"Registering ${files.length} files with DuckLake table: $tableName")
+
+    try {
+      // Register files with DuckLake using the shared client
+      // Note: ducklake_add_data_files expects just the table name, not schema.table
+      client.registerDataFiles(schemaName, tableNameOnly, files)
+
+      logger.info(s"Successfully registered ${files.length} files with DuckLake")
+
+    } catch {
+      case e: Exception =>
+        logger.error(s"Failed to register files with DuckLake: ${e.getMessage}", e)
+        throw new RuntimeException(s"DuckLake file registration failed: ${e.getMessage}", e)
+    }
+    // Note: Don't close the client - it's shared with the catalog
+  }
+}
+
+/**
+ * WriterCommitMessage carries the list of written file paths from executors to driver.
+ */
+case class DuckLakeWriterCommitMessage(files: Seq[String]) extends WriterCommitMessage
