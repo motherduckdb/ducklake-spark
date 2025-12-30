@@ -1,13 +1,11 @@
 package com.motherduck.spark.writer
 
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
-import org.apache.hadoop.mapreduce.{TaskAttemptContext, TaskAttemptID, TaskType}
+import org.apache.hadoop.mapreduce.{TaskAttemptID, TaskType}
 import org.apache.hadoop.mapreduce.task.TaskAttemptContextImpl
 import org.apache.parquet.hadoop.ParquetOutputFormat
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.write.{DataWriter, DataWriterFactory, WriterCommitMessage}
-import org.apache.spark.sql.execution.datasources.OutputWriter
 import org.apache.spark.sql.execution.datasources.parquet.{ParquetOutputWriter, ParquetWriteSupport}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
@@ -36,9 +34,10 @@ class DuckLakeDataWriterFactory(
 }
 
 /**
- * DataWriter that writes rows to Parquet files.
+ * DataWriter for Parquet files.
  *
- * Maximum reuse of existing spark/hadoop functionality for writing Prquet.
+ * Maximum reuse of Spark's parquet writing.
+ *
  * Runs on executors. Each task gets its own DataWriter instance.
  * Tracks all files written and returns them in commit().
  */
@@ -56,7 +55,7 @@ class DuckLakeDataWriter(
   private val writtenFiles = ArrayBuffer[String]()
 
   // Current Parquet writer
-  private var currentWriter: OutputWriter = _
+  private var currentWriter: ParquetOutputWriter = _
   private var currentFilePath: String = _
   private var rowCount: Long = 0
   private var totalRowCount: Long = 0
@@ -134,7 +133,6 @@ class DuckLakeDataWriter(
     )
     val taskContext = new TaskAttemptContextImpl(hadoopConf, taskAttemptId)
 
-    // Create ParquetOutputWriter directly with our configured context
     currentWriter = new ParquetOutputWriter(currentFilePath, taskContext)
   }
 

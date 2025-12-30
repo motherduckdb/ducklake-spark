@@ -7,7 +7,7 @@ import org.apache.spark.sql.types.StructType
 import org.slf4j.LoggerFactory
 
 import java.util
-import scala.jdk.CollectionConverters._
+import scala.collection.JavaConverters._
 
 /**
  * Represents an existing DuckLake table in Spark.

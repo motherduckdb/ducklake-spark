@@ -8,9 +8,8 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.slf4j.LoggerFactory
 
 import java.util
-import scala.jdk.CollectionConverters._
 
-class DuckLakeCatalog extends TableCatalog with SupportsNamespaces {
+class DuckLakeCatalog extends TableCatalog with SupportsNamespaces with AutoCloseable {
 
   private val logger = LoggerFactory.getLogger(classOf[DuckLakeCatalog])
 
@@ -191,6 +190,19 @@ class DuckLakeCatalog extends TableCatalog with SupportsNamespaces {
       case e: Exception =>
         logger.error(s"Failed to check namespace existence: ${e.getMessage}")
         namespace(0) == "main"  // Assume main exists
+    }
+  }
+
+  override def close(): Unit = {
+    if (client != null) {
+      logger.info(s"Closing DuckLakeCatalog '$catalogName'")
+      try {
+        client.close()
+      } catch {
+        case e: Exception =>
+          logger.warn(s"Error closing client: ${e.getMessage}")
+      }
+      client = null
     }
   }
 }
