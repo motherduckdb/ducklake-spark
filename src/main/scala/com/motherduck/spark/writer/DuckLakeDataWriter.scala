@@ -9,6 +9,7 @@ import org.apache.spark.sql.connector.write.{DataWriter, DataWriterFactory, Writ
 import org.apache.spark.sql.execution.datasources.parquet.{ParquetOutputWriter, ParquetWriteSupport}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.util.SerializableConfiguration
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable.ArrayBuffer
@@ -18,25 +19,29 @@ import scala.collection.mutable.ArrayBuffer
  *
  * This is serialized and sent to each executor where it creates
  * task-specific DataWriter instances.
+ *
+ * @param tableName  Table name for logging
+ * @param schema     Spark schema for the table
+ * @param dataPath   Path where Parquet files will be written
+ * @param hadoopConf Serializable Hadoop configuration (includes S3 credentials etc)
  */
 class DuckLakeDataWriterFactory(
     tableName: String,
     schema: StructType,
-    dataPath: String
+    dataPath: String,
+    hadoopConf: SerializableConfiguration
 ) extends DataWriterFactory with Serializable {
 
   @transient private lazy val logger = LoggerFactory.getLogger(classOf[DuckLakeDataWriterFactory])
 
   override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = {
     logger.info(s"Creating DataWriter for partition=$partitionId, task=$taskId, dataPath=$dataPath")
-    new DuckLakeDataWriter(tableName, schema, dataPath, partitionId, taskId)
+    new DuckLakeDataWriter(tableName, schema, dataPath, partitionId, taskId, hadoopConf.value)
   }
 }
 
 /**
- * DataWriter for Parquet files.
- *
- * Maximum reuse of Spark's parquet writing.
+ * DataWriter for Parquet files using Spark's ParquetWriteSupport.
  *
  * Runs on executors. Each task gets its own DataWriter instance.
  * Tracks all files written and returns them in commit().
@@ -46,7 +51,8 @@ class DuckLakeDataWriter(
     schema: StructType,
     dataPath: String,
     partitionId: Int,
-    taskId: Long
+    taskId: Long,
+    baseHadoopConf: Configuration
 ) extends DataWriter[InternalRow] {
 
   @transient private lazy val logger = LoggerFactory.getLogger(classOf[DuckLakeDataWriter])
@@ -64,12 +70,13 @@ class DuckLakeDataWriter(
   private val maxRowsPerFile: Long = 1000000  // 1M rows per file
 
   /**
-   * Create Hadoop configuration with all settings required for ParquetWriteSupport.
-   * These settings are normally set by ParquetFileFormat.prepareWrite() via SparkSession,
-   * but we set them manually since we don't have access to SparkSession on executors.
+   * Create Hadoop configuration for ParquetWriteSupport.
+   * Starts with the base config (which includes S3 credentials etc from Spark)
+   * and adds Parquet-specific settings.
    */
   private def createParquetConfiguration(): Configuration = {
-    val hadoopConf = new Configuration()
+    // Clone the base config to preserve S3 credentials and other settings
+    val hadoopConf = new Configuration(baseHadoopConf)
 
     // Set the schema for ParquetWriteSupport
     ParquetWriteSupport.setSchema(schema, hadoopConf)

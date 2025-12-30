@@ -1,8 +1,10 @@
 package com.motherduck.spark.writer
 
 import com.motherduck.spark.catalog.DuckLakeClient
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.write._
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.util.SerializableConfiguration
 import org.slf4j.LoggerFactory
 
 /**
@@ -85,7 +87,18 @@ class DuckLakeBatchWrite(
     logger.info(s"Creating DataWriterFactory for table: $tableName, " +
                 s"numPartitions: ${info.numPartitions()}, dataPath: $dataPath")
 
-    new DuckLakeDataWriterFactory(tableName, schema, dataPath)
+    // Get Hadoop configuration from active SparkSession (includes S3 credentials etc)
+    val hadoopConf = SparkSession.active.sparkContext.hadoopConfiguration
+
+    // Map s3:// scheme to use s3a filesystem implementation
+    // DuckLake stores paths with s3:// but Spark/Hadoop uses s3a://
+    if (hadoopConf.get("fs.s3.impl") == null) {
+      hadoopConf.set("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    }
+
+    val serializableConf = new SerializableConfiguration(hadoopConf)
+
+    new DuckLakeDataWriterFactory(tableName, schema, dataPath, serializableConf)
   }
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {

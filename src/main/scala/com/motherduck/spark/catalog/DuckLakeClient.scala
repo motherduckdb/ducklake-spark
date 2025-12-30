@@ -19,6 +19,11 @@ class DuckLakeClient(val ducklakePath: String) extends AutoCloseable {
 
   // Lazy connection - only created when needed
   private var jdbcConnection: Connection = _
+
+  // Determine connection mode based on path
+  private val isMotherDuck: Boolean =
+    ducklakePath.startsWith("md:") || ducklakePath.startsWith("motherduck:")
+
   private val catalogAlias = "ducklake_catalog"
 
   private def getConnection: Connection = {
@@ -32,12 +37,17 @@ class DuckLakeClient(val ducklakePath: String) extends AutoCloseable {
       jdbcConnection = DriverManager.getConnection("jdbc:duckdb:", props)
 
       // Install and load DuckLake extension
+      val metadataCatalogPath = if (isMotherDuck) {
+        // MotherDuck DuckLake: metadata is in __ducklake_metadata_<db>
+        // See: https://motherduck.com/docs/integrations/file-formats/ducklake/#using-own-compute
+        val dbName = ducklakePath.stripPrefix("md:").stripPrefix("motherduck:")
+        s"ducklake:md:__ducklake_metadata_$dbName"
+      } else {
+        ducklakePath
+      }
       val stmt = jdbcConnection.createStatement()
       try {
-        stmt.execute("INSTALL ducklake")
-        stmt.execute("LOAD ducklake")
-
-        val attachSql = s"ATTACH '$ducklakePath' AS $catalogAlias"
+        val attachSql = s"ATTACH '$metadataCatalogPath' AS $catalogAlias"
         logger.info(s"Attaching DuckLake catalog: $attachSql")
         stmt.execute(attachSql)
       } finally {
@@ -114,7 +124,8 @@ class DuckLakeClient(val ducklakePath: String) extends AutoCloseable {
       val rs = stmt.executeQuery(sql)
 
       if (rs.next()) {
-        val basePath = rs.getString("value").stripSuffix("/")
+        val basePath = rs.getString("value")
+          .stripSuffix("/")
         rs.close()
         // Construct full path: basePath/schema/table
         val fullPath = s"$basePath/$schemaName/$tableName"
