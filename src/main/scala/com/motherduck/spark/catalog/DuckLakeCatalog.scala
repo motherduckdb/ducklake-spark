@@ -15,6 +15,7 @@ class DuckLakeCatalog extends TableCatalog with SupportsNamespaces with AutoClos
 
   private var catalogName: String = _
   private var path: String = _
+  private var initSql: Option[String] = None
   private var options: CaseInsensitiveStringMap = _
   private var client: DuckLakeClient = _
 
@@ -22,8 +23,10 @@ class DuckLakeCatalog extends TableCatalog with SupportsNamespaces with AutoClos
     this.catalogName = name
     this.options = options
     this.path = options.get("path")
+    this.initSql = Option(options.get("init-sql")).filter(_.nonEmpty)
 
     logger.info(s"Initializing DuckLakeCatalog '$name' with path: $path")
+    initSql.foreach(sql => logger.info(s"Init SQL configured (${sql.length} chars)"))
 
     if (path == null || path.isEmpty) {
       throw new IllegalArgumentException(
@@ -32,7 +35,7 @@ class DuckLakeCatalog extends TableCatalog with SupportsNamespaces with AutoClos
       )
     }
 
-    this.client = new DuckLakeClient(path)
+    this.client = new DuckLakeClient(path, initSql)
   }
 
   override def name(): String = catalogName

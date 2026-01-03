@@ -12,8 +12,9 @@ import java.util.Properties
  * Uses DuckDB ducklake extension rather than direct metadata manipulation.
  *
  * @param ducklakePath DuckLake metadata catalog path (local duckdb, MotherDuck, Postgres etc)
+ * @param initSql      Optional SQL to run once when connection is created (for secrets, settings, etc.)
  */
-class DuckLakeClient(val ducklakePath: String) extends AutoCloseable {
+class DuckLakeClient(val ducklakePath: String, initSql: Option[String] = None) extends AutoCloseable {
 
   private val logger = LoggerFactory.getLogger(classOf[DuckLakeClient])
 
@@ -33,20 +34,30 @@ class DuckLakeClient(val ducklakePath: String) extends AutoCloseable {
       val props = new Properties()
       props.setProperty("custom_user_agent", "md-spark")
 
-      // Connect to an in-memory DuckDB that will attach to the DuckLake catalog
+      // Connect to an in-memory DuckDB that will attach the DuckLake catalog
       jdbcConnection = DriverManager.getConnection("jdbc:duckdb:", props)
 
-      // Install and load DuckLake extension
-      val metadataCatalogPath = if (isMotherDuck) {
-        // MotherDuck DuckLake: metadata is in __ducklake_metadata_<db>
-        // See: https://motherduck.com/docs/integrations/file-formats/ducklake/#using-own-compute
-        val dbName = ducklakePath.stripPrefix("md:").stripPrefix("motherduck:")
-        s"ducklake:md:__ducklake_metadata_$dbName"
-      } else {
-        ducklakePath
-      }
       val stmt = jdbcConnection.createStatement()
       try {
+        // Run init SQL if provided (for secrets, S3 config, etc.)
+        // DuckDB natively handles multi-statement strings
+        if (initSql.isDefined) {
+          val sql = initSql.get
+          logger.info(s"Executing init SQL (${sql.length} chars)")
+          stmt.execute(sql)
+          logger.info("Init SQL completed")
+        }
+
+        // Determine the metadata catalog path
+        val metadataCatalogPath = if (isMotherDuck) {
+          // MotherDuck DuckLake: metadata is in __ducklake_metadata_<db>
+          // See: https://motherduck.com/docs/integrations/file-formats/ducklake/#using-own-compute
+          val dbName = ducklakePath.stripPrefix("md:").stripPrefix("motherduck:")
+          s"ducklake:md:__ducklake_metadata_$dbName"
+        } else {
+          ducklakePath
+        }
+
         val attachSql = s"ATTACH '$metadataCatalogPath' AS $catalogAlias"
         logger.info(s"Attaching DuckLake catalog: $attachSql")
         stmt.execute(attachSql)

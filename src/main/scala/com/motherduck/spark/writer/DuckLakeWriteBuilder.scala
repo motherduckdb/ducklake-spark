@@ -142,7 +142,7 @@ class DuckLakeBatchWrite(
       logger.warn(s"Aborting: ${allFiles.length} files were written but won't be registered")
       // Note: Files remain on storage (S3/local) but are orphaned
       // DuckLake doesn't know about them since we never registered them
-      // TODO: Optionally delete the orphaned files via Hadoop FileSystem API
+      // TODO: clean up the orphaned files via Hadoop FileSystem API
       allFiles.foreach(f => logger.warn(s"  Orphaned file: $f"))
     }
   }
@@ -153,7 +153,6 @@ class DuckLakeBatchWrite(
    * Uses DuckDB JDBC to call ducklake_add_data_files() for each file.
    * Files are registered in the order they were written.
    * Uses the shared client from the catalog - TODO: maybe actually use the instance cache
-   * // TODO: should all files get registered in a transaction to avoid partial writes? what's a good unit of concurrency here?
    */
   private def registerFilesWithDuckLake(files: Seq[String]): Unit = {
     logger.info(s"Registering ${files.length} files with DuckLake table: $tableName")
