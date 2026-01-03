@@ -208,23 +208,49 @@ class DuckLakeClient(val ducklakePath: String) extends AutoCloseable {
   }
 
   /**
-   * Register data files with DuckLake catalog after a write operation.
+   * Register data files with DuckLake catalog in a single transaction.
    *
-   * @param schemaName Schema name
-   * @param tableName  Table name (just the name, not schema.table)
-   * @param filePaths  List of Parquet file paths to register
+   * All files are registered atomically - if any registration fails, the entire
+   * operation is rolled back to prevent partial writes.
+   *
+   * TODO: on rollback, clean up the parquet files that got written
+   *
+   * Note: ducklake_add_data_files doesn't support array input yet (see duckdb/ducklake#575),
+   * so we call it once per file within a transaction. This is a bottleneck for large
+   * numbers of files.
    */
   def registerDataFiles(schemaName: String, tableName: String, filePaths: Seq[String]): Unit = {
     val conn = getConnection
     val stmt = conn.createStatement()
 
     try {
-      for (filePath <- filePaths) {
-        // ducklake_add_data_files expects: catalog_name, table_name, file_path
-        // Note: table_name should be just the name, not schema.table
-        val sql = s"CALL ducklake_add_data_files('$catalogAlias', '$tableName', '$filePath')"
-        logger.info(s"Registering file: $sql")
-        stmt.execute(sql)
+      // Start transaction for atomic registration
+      stmt.execute("BEGIN TRANSACTION")
+      logger.info(s"Started transaction for registering ${filePaths.length} files")
+
+      try {
+        // Register files one at a time within the transaction
+        for (filePath <- filePaths) {
+          val sql = s"CALL ducklake_add_data_files('$catalogAlias', '$tableName', '$filePath')"
+          logger.debug(s"Registering file: $sql")
+          stmt.execute(sql)
+        }
+
+        // Commit all registrations atomically
+        stmt.execute("COMMIT")
+        logger.info(s"Committed registration of ${filePaths.length} files with DuckLake")
+
+      } catch {
+        case e: Exception =>
+          logger.error(s"Rolling back transaction due to error: ${e.getMessage}")
+          try {
+            stmt.execute("ROLLBACK")
+            logger.info("Transaction rolled back successfully")
+          } catch {
+            case rollbackEx: Exception =>
+              logger.error(s"Failed to rollback transaction: ${rollbackEx.getMessage}")
+          }
+          throw e
       }
     } finally {
       stmt.close()

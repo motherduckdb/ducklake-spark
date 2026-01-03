@@ -102,6 +102,7 @@ class DuckLakeBatchWrite(
   }
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {
+    val commitStartTime = System.currentTimeMillis()
     logger.info(s"BatchWrite.commit() called with ${messages.length} task messages")
 
     // Collect all files from all tasks
@@ -123,6 +124,9 @@ class DuckLakeBatchWrite(
     } else {
       logger.info("No files to register - write operation complete (no data written)")
     }
+
+    val commitElapsed = System.currentTimeMillis() - commitStartTime
+    logger.info(s"TIMING: Commit phase completed in ${commitElapsed}ms (${allFiles.length} files)")
   }
 
   override def abort(messages: Array[WriterCommitMessage]): Unit = {
@@ -154,12 +158,14 @@ class DuckLakeBatchWrite(
   private def registerFilesWithDuckLake(files: Seq[String]): Unit = {
     logger.info(s"Registering ${files.length} files with DuckLake table: $tableName")
 
+    val registerStartTime = System.currentTimeMillis()
     try {
       // Register files with DuckLake using the shared client
       // Note: ducklake_add_data_files expects just the table name, not schema.table
       client.registerDataFiles(schemaName, tableNameOnly, files)
 
-      logger.info(s"Successfully registered ${files.length} files with DuckLake")
+      val registerElapsed = System.currentTimeMillis() - registerStartTime
+      logger.info(s"TIMING: DuckLake catalog registration completed in ${registerElapsed}ms (${files.length} files)")
 
     } catch {
       case e: Exception =>

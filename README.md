@@ -32,7 +32,7 @@ spark = SparkSession.builder \
     .appName("DuckLake Example") \
     .config("spark.jars", "/path/to/ducklake-spark_2.12-0.1.0-SNAPSHOT.jar") \
     .config("spark.sql.catalog.ducklake", "com.motherduck.spark.catalog.DuckLakeCatalog") \
-    .config("spark.sql.catalog.ducklake.connection", "ducklake:/path/to/catalog.ducklake") \
+    .config("spark.sql.catalog.ducklake.path", "ducklake:/path/to/catalog.ducklake") \
     .getOrCreate()
 
 # Create a DataFrame
@@ -67,7 +67,7 @@ For S3-backed DuckLake tables, configure AWS credentials:
 ```python
 spark = SparkSession.builder \
     .config("spark.sql.catalog.ducklake", "com.motherduck.spark.catalog.DuckLakeCatalog") \
-    .config("spark.sql.catalog.ducklake.connection", "md:my_ducklake_db") \
+    .config("spark.sql.catalog.ducklake.path", "md:my_ducklake_db") \
     .config("spark.hadoop.fs.s3a.access.key", "YOUR_ACCESS_KEY") \
     .config("spark.hadoop.fs.s3a.secret.key", "YOUR_SECRET_KEY") \
     .config("spark.hadoop.fs.s3a.region", "us-east-2") \
