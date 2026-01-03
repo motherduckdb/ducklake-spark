@@ -11,10 +11,15 @@ import java.util.Properties
  * Client for managing all ducklake catalog operations.
  * Uses DuckDB ducklake extension rather than direct metadata manipulation.
  *
- * @param ducklakePath DuckLake metadata catalog path (local duckdb, MotherDuck, Postgres etc)
- * @param initSql      Optional SQL to run once when connection is created (for secrets, settings, etc.)
+ * @param ducklakePath     DuckLake metadata catalog path (local duckdb, MotherDuck, Postgres etc)
+ * @param initSql          Optional SQL to run once when connection is created (for secrets, settings, etc.)
+ * @param motherDuckToken  Optional MotherDuck token (alternative to MOTHERDUCK_TOKEN env var)
  */
-class DuckLakeClient(val ducklakePath: String, initSql: Option[String] = None) extends AutoCloseable {
+class DuckLakeClient(
+    val ducklakePath: String,
+    initSql: Option[String] = None,
+    motherDuckToken: Option[String] = None
+) extends AutoCloseable {
 
   private val logger = LoggerFactory.getLogger(classOf[DuckLakeClient])
 
@@ -58,6 +63,12 @@ class DuckLakeClient(val ducklakePath: String, initSql: Option[String] = None) e
           ducklakePath
         }
 
+        if (isMotherDuck && motherDuckToken.isDefined) {
+          stmt.execute("INSTALL motherduck")
+          stmt.execute("LOAD motherduck")
+          val token = motherDuckToken.get
+          stmt.execute(s"SET motherduck_token='$token'")
+        }
         val attachSql = s"ATTACH '$metadataCatalogPath' AS $catalogAlias"
         logger.info(s"Attaching DuckLake catalog: $attachSql")
         stmt.execute(attachSql)
