@@ -13,13 +13,15 @@ import org.slf4j.LoggerFactory
  * Creates BatchWrite instances that handle the actual write operation.
  * This is where we control file tracking and DuckLake registration.
  *
- * @param tableName  Full table name (schema.table)
+ * @param schemaName Schema name (e.g., "main")
+ * @param tableName  Table name (without schema prefix)
  * @param schema     Spark schema for the table
  * @param connection DuckLake connection string
  * @param dataPath   Job-specific data path (includes job subfolder)
  * @param client     Shared DuckLakeCatalogClient for metadata operations
  */
 class DuckLakeWriteBuilder(
+    schemaName: String,
     tableName: String,
     schema: StructType,
     connection: String,
@@ -29,10 +31,10 @@ class DuckLakeWriteBuilder(
 
   private val logger = LoggerFactory.getLogger(classOf[DuckLakeWriteBuilder])
 
-  logger.info(s"DuckLakeWriteBuilder created for table: $tableName, dataPath: $dataPath")
+  logger.info(s"DuckLakeWriteBuilder created for table: $schemaName.$tableName, dataPath: $dataPath")
 
   override def build(): Write = {
-    new DuckLakeWrite(tableName, schema, connection, dataPath, client)
+    new DuckLakeWrite(schemaName, tableName, schema, connection, dataPath, client)
   }
 }
 
@@ -40,6 +42,7 @@ class DuckLakeWriteBuilder(
  * Write implementation that provides BatchWrite for batch operations.
  */
 class DuckLakeWrite(
+    schemaName: String,
     tableName: String,
     schema: StructType,
     connection: String,
@@ -50,23 +53,25 @@ class DuckLakeWrite(
   private val logger = LoggerFactory.getLogger(classOf[DuckLakeWrite])
 
   override def toBatch: BatchWrite = {
-    logger.info(s"Creating BatchWrite for table: $tableName")
-    new DuckLakeBatchWrite(tableName, schema, connection, dataPath, client)
+    logger.info(s"Creating BatchWrite for table: $schemaName.$tableName")
+    new DuckLakeBatchWrite(schemaName, tableName, schema, connection, dataPath, client)
   }
 
-  override def description(): String = s"DuckLakeWrite($tableName)"
+  override def description(): String = s"DuckLakeWrite($schemaName.$tableName)"
 }
 
 /**
  * BatchWrite implementation for DuckLake.
  *
- * @param tableName  Full table name (schema.table format)
+ * @param schemaName Schema name (e.g., "main")
+ * @param tableName  Table name (without schema prefix)
  * @param schema     Spark schema for the table
  * @param connection DuckLake connection string
  * @param dataPath   Job-specific data path where files will be written
  * @param client     Shared DuckLakeCatalogClient for file registration
  */
 class DuckLakeBatchWrite(
+    schemaName: String,
     tableName: String,
     schema: StructType,
     connection: String,
@@ -76,15 +81,10 @@ class DuckLakeBatchWrite(
 
   private val logger = LoggerFactory.getLogger(classOf[DuckLakeBatchWrite])
 
-  // Parse schema.table into components
-  private val (schemaName, tableNameOnly) = {
-    val parts = tableName.split("\\.", 2)
-    if (parts.length == 2) (parts(0), parts(1))
-    else ("main", parts(0))
-  }
+  private val fullTableName = s"$schemaName.$tableName"
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = {
-    logger.info(s"Creating DataWriterFactory for table: $tableName, " +
+    logger.info(s"Creating DataWriterFactory for table: $fullTableName, " +
                 s"numPartitions: ${info.numPartitions()}, dataPath: $dataPath")
 
     // Get Hadoop configuration from active SparkSession (includes S3 credentials etc)
@@ -98,7 +98,7 @@ class DuckLakeBatchWrite(
 
     val serializableConf = new SerializableConfiguration(hadoopConf)
 
-    new DuckLakeDataWriterFactory(tableName, schema, dataPath, serializableConf)
+    new DuckLakeDataWriterFactory(fullTableName, schema, dataPath, serializableConf)
   }
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {
@@ -152,16 +152,15 @@ class DuckLakeBatchWrite(
    *
    * Uses DuckDB JDBC to call ducklake_add_data_files() for each file.
    * Files are registered in the order they were written.
-   * Uses the shared client from the catalog - TODO: maybe actually use the instance cache
+   * Uses the shared client from the catalog.
    */
   private def registerFilesWithDuckLake(files: Seq[String]): Unit = {
-    logger.info(s"Registering ${files.length} files with DuckLake table: $tableName")
+    logger.info(s"Registering ${files.length} files with DuckLake table: $fullTableName")
 
     val registerStartTime = System.currentTimeMillis()
     try {
       // Register files with DuckLake using the shared client
-      // Note: ducklake_add_data_files expects just the table name, not schema.table
-      client.registerDataFiles(schemaName, tableNameOnly, files)
+      client.registerDataFiles(schemaName, tableName, files)
 
       val registerElapsed = System.currentTimeMillis() - registerStartTime
       logger.info(s"TIMING: DuckLake catalog registration completed in ${registerElapsed}ms (${files.length} files)")

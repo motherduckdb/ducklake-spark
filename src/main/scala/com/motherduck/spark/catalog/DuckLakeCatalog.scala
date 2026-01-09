@@ -82,7 +82,8 @@ class DuckLakeCatalog extends TableCatalog with SupportsNamespaces with AutoClos
 
     // Return a DuckLakeTable that supports writing
     new DuckLakeTable(
-      tableName = s"$schemaName.$tableName",
+      schemaName = schemaName,
+      tableName = tableName,
       tableSchema = tableSchema,
       path = path,
       dataPath = dataPath,

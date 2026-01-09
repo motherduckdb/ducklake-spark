@@ -12,13 +12,15 @@ import scala.collection.JavaConverters._
 /**
  * Represents an existing DuckLake table in Spark.
  *
- * @param tableName   Full table name (schema.table)
+ * @param schemaName  Schema name (e.g., "main")
+ * @param tableName   Table name (without schema prefix)
  * @param tableSchema Spark StructType schema (queried from DuckLake)
  * @param path        DuckLake metadata catalog connection string
  * @param dataPath    Base path for data files
  * @param client      Shared DuckLakeClient for metadata operations
  */
 class DuckLakeTable(
+                     val schemaName: String,
                      val tableName: String,
                      val tableSchema: StructType,
                      val path: String,
@@ -28,9 +30,11 @@ class DuckLakeTable(
 
   private val logger = LoggerFactory.getLogger(classOf[DuckLakeTable])
 
-  logger.info(s"DuckLakeTable created: $tableName, dataPath=$dataPath")
+  private val fullName = s"$schemaName.$tableName"
 
-  override def name(): String = tableName
+  logger.info(s"DuckLakeTable created: $fullName, dataPath=$dataPath")
+
+  override def name(): String = fullName
 
   override def schema(): StructType = tableSchema
 
@@ -42,7 +46,7 @@ class DuckLakeTable(
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): WriteBuilder = {
-    logger.info(s"Creating WriteBuilder for table: $tableName")
+    logger.info(s"Creating WriteBuilder for table: $fullName")
     logger.info(s"  Write schema: ${info.schema()}")
 
     // Generate a unique job path for this write operation
@@ -53,8 +57,8 @@ class DuckLakeTable(
 
     val jobDataPath = s"$dataPath/job-$timestamp-$jobId"
 
-    new DuckLakeWriteBuilder(tableName, info.schema(), path, jobDataPath, client)
+    new DuckLakeWriteBuilder(schemaName, tableName, info.schema(), path, jobDataPath, client)
   }
 
-  override def toString: String = s"DuckLakeTable($tableName, $dataPath)"
+  override def toString: String = s"DuckLakeTable($fullName, $dataPath)"
 }
