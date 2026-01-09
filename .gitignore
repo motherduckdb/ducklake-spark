@@ -1,3 +1,16 @@
 .idea
 target
 dependency-reduced-pom.xml
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for VS Code
+.history/
+
+# Built VS Code extensions
+*.vsix
