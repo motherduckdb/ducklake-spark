@@ -5,7 +5,7 @@ Note that the ducklake and the tables must already exist before writing.
 
 ## Installation
 
-Maven central TBD. For now, get the jar from artifacts (or build yourself) and use it directly.
+Download the jar from the latest [pre-release artifacts](https://github.com/motherduckdb/ducklake-spark/releases) or [build it](#building-the-project) and use it directly.
 
 ```bash
 spark-submit --jars ducklake-spark_2.12-0.1.0-SNAPSHOT.jar your_script.py
@@ -24,9 +24,9 @@ spark = SparkSession.builder \
       .getOrCreate()
 ```
 
-The connector also uses DuckDB ducklake extension to interact with the DuckLake catalog, so unless the catalog is a local DuckDB database, it will need to pass the credentials.
+The connector also uses DuckDB ducklake extension to interact with the DuckLake catalog, so unless the catalog is a local DuckDB database, the spark session will need the credentials.
 
-### MotherDuck
+### MotherDuck Ducklake Catalog
 
 Pass `motherduck_token` through spark session configuration:
 
@@ -39,7 +39,7 @@ spark = SparkSession.builder \
 
 Environment variable `motherduck_token` will also work.
 
-### Postgres
+### Postgres Ducklake Catalog
 
 ```
 spark = SparkSession.builder \
@@ -67,7 +67,7 @@ from pyspark.sql import SparkSession
 spark = SparkSession.builder \
     .appName("My DuckLake Test") \
     .master("spark://...:7077") \
-    .config("spark.jars", "/home/elena/code/ecosystems2/ducklake_spark/repos/ducklake-spark/target/ducklake-spark_2.12-0.1.0-SNAPSHOT.jar") \
+    .config("spark.jars", "/path/to/downloaded/jar/ducklake-spark_2.12-0.1.0-SNAPSHOT.jar") \
     .config("spark.sql.catalog.ducklake", "com.motherduck.spark.catalog.DuckLakeCatalog") \
     .config("spark.sql.catalog.ducklake.path", "md:THE_DUCKLAKE_DATABASE_NAME") \
     .config("spark.sql.catalog.ducklake.motherduck-token", "THE_MOTHERDUCK_TOKEN") \
@@ -121,7 +121,7 @@ spark = SparkSession.builder \
 spark = SparkSession.builder \
     .appName("My Ducklake Test") \
     .master("spark://...:7077") \
-    .config("spark.jars", "/home/elena/code/ecosystems2/ducklake_spark/repos/ducklake-spark/target/ducklake-spark_2.12-0.1.0-SNAPSHOT.jar") \
+    .config("spark.jars", "/path/to/downloaded/jar/ducklake-spark_2.12-0.1.0-SNAPSHOT.jar") \
     .config("spark.sql.catalog.ducklake", "com.motherduck.spark.catalog.DuckLakeCatalog") \
     .config("spark.sql.catalog.ducklake.path", "ducklake:/path/to/ducklake/database_name.ducklake") \
     .getOrCreate()
@@ -135,6 +135,7 @@ spark = SparkSession.builder \
 - **Append mode only**: Overwrite and other modes not yet supported
 - **No schema evolution**: Table schema must match DataFrame schema exactly
 - **Type strictness**: Spark `LongType` won't work if table expects `INTEGER` - use explicit schemas
+- No complex types (lists, struct, json)
 
 
 ## See Also
