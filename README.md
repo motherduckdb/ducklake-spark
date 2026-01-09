@@ -135,7 +135,9 @@ spark = SparkSession.builder \
 - **Append mode only**: Overwrite and other modes not yet supported
 - **No schema evolution**: Table schema must match DataFrame schema exactly
 - **Type strictness**: Spark `LongType` won't work if table expects `INTEGER` - use explicit schemas
-- No complex types (lists, struct, json)
+- **No complex types**: Lists, structs, and JSON columns are not supported
+- **No UUID columns**: Spark has no native UUID type and writes strings to Parquet, causing type mismatch with DuckLake UUID columns. Workaround: use VARCHAR in your DuckLake table instead
+- **No BLOB columns**: Similar issue - Spark BinaryType maps to Parquet BYTE_ARRAY which doesn't match DuckLake BLOB. Workaround: use VARCHAR with base64 encoding
 
 
 ## See Also
