@@ -5,7 +5,8 @@ Note that the ducklake and the tables must already exist before writing.
 
 ## Installation
 
-The connector is published to Maven Central, so Spark can resolve it directly:
+The connector is published to [Maven Central](https://central.sonatype.com/artifact/com.motherduck/ducklake-spark_2.12),
+so Spark can resolve it directly:
 
 ```bash
 spark-submit --packages com.motherduck:ducklake-spark_2.12:0.2.0 your_script.py
