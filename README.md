@@ -5,11 +5,34 @@ Note that the ducklake and the tables must already exist before writing.
 
 ## Installation
 
-Download the jar from the latest [pre-release artifacts](https://github.com/motherduckdb/ducklake-spark/releases) or [build it](#building-the-project) and use it directly.
+The connector is published to [Maven Central](https://central.sonatype.com/artifact/com.motherduck/ducklake-spark_2.12),
+so Spark can resolve it directly:
 
 ```bash
-spark-submit --jars ducklake-spark_2.12-0.1.0-SNAPSHOT.jar your_script.py
+spark-submit --packages com.motherduck:ducklake-spark_2.12:0.2.0 your_script.py
 ```
+
+Alternatively download a jar from the [releases](https://github.com/motherduckdb/ducklake-spark/releases)
+or [build it](#building-the-project) and pass it with `--jars`.
+
+### Picking the Scala version
+
+The artifact name ends in the Scala binary version the jar was compiled with, which must
+match the Scala version your Spark runtime was built with — Scala is not binary compatible
+across versions, so a mismatch fails at class-loading time rather than with a clear error.
+
+| Artifact                                                                                            | Use with                                                 |
+|-----------------------------------------------------------------------------------------------------|----------------------------------------------------------|
+| [`ducklake-spark_2.12`](https://central.sonatype.com/artifact/com.motherduck/ducklake-spark_2.12)     | Spark 3.x default builds (including `pyspark` from PyPI)  |
+| [`ducklake-spark_2.13`](https://central.sonatype.com/artifact/com.motherduck/ducklake-spark_2.13)     | Spark 3.x builds for Scala 2.13 (from release 0.3.0 on)   |
+
+This is the standard convention for anything containing Scala code, and Spark itself is
+published the same way — see [`spark-core_2.12` / `spark-core_2.13` and friends on Maven
+Central](https://central.sonatype.com/search?q=spark). If you are unsure which one you
+need, check the `scala-library-*.jar` in your Spark distribution's `jars/` directory.
+
+Spark 4 is not supported yet: it requires Scala 2.13 *and* a newer DataSource V2 API than
+this connector targets.
 
 ## Connecting
 
@@ -193,3 +216,22 @@ mvn clean package -DskipTests
 
 
 Connector fat jar will be in `target/ducklake-spark_2.12-0.1.0-SNAPSHOT.jar`.
+
+The build defaults to Scala 2.12. To build for 2.13, override both version properties:
+
+```bash
+mvn clean package -Dscala.binary.version=2.13 -Dscala.version=2.13.18
+```
+
+CI runs the test suite against both.
+
+## Releasing
+
+Publishing is fully automated: [create a GitHub release](https://github.com/motherduckdb/ducklake-spark/releases/new)
+with a tag like `v0.3.0`, and the [publish workflow](.github/workflows/publish.yml) builds,
+signs, and deploys `ducklake-spark_2.12` and `ducklake-spark_2.13` to Maven Central. The
+version comes from the tag (the leading `v` is stripped), so the `0.1.0-SNAPSHOT` in
+`pom.xml` never needs to be edited.
+
+Artifacts usually appear on Maven Central within a few minutes and cannot be deleted or
+overwritten afterwards, so a mistake means burning a version number.
