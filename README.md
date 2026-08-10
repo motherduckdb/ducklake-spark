@@ -21,10 +21,10 @@ The artifact name ends in the Scala binary version the jar was compiled with, wh
 match the Scala version your Spark runtime was built with — Scala is not binary compatible
 across versions, so a mismatch fails at class-loading time rather than with a clear error.
 
-| Artifact                | Use with                                                       |
-|-------------------------|----------------------------------------------------------------|
-| `ducklake-spark_2.12`   | Spark 3.x default builds (including `pyspark` from PyPI)        |
-| `ducklake-spark_2.13`   | Spark 3.x builds for Scala 2.13                                 |
+| Artifact                                                                                            | Use with                                                 |
+|-----------------------------------------------------------------------------------------------------|----------------------------------------------------------|
+| [`ducklake-spark_2.12`](https://central.sonatype.com/artifact/com.motherduck/ducklake-spark_2.12)     | Spark 3.x default builds (including `pyspark` from PyPI)  |
+| [`ducklake-spark_2.13`](https://central.sonatype.com/artifact/com.motherduck/ducklake-spark_2.13)     | Spark 3.x builds for Scala 2.13 (from release 0.3.0 on)   |
 
 This is the standard convention for anything containing Scala code, and Spark itself is
 published the same way — see [`spark-core_2.12` / `spark-core_2.13` and friends on Maven
