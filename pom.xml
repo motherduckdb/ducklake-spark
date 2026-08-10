@@ -50,7 +50,7 @@
         <scala.version>2.12.18</scala.version>
         <scala.binary.version>2.12</scala.binary.version>
         <spark.version>3.5.7</spark.version>
-        <duckdb.version>1.4.3.0</duckdb.version>
+        <duckdb.version>1.5.5.1</duckdb.version>
     </properties>
 
     <dependencies>
