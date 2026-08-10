@@ -9,6 +9,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # One deployment per Scala binary version: the artifacts have different names
+    # (ducklake-spark_2.12, ducklake-spark_2.13) and are published independently.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scala: "2.12"
+            scala_full: "2.12.18"
+          - scala: "2.13"
+            scala_full: "2.13.18"
+    name: publish (Scala ${{ matrix.scala }})
     steps:
       - uses: actions/checkout@v4
 
@@ -49,4 +60,9 @@ jobs:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: mvn -B -P release -DskipTests -Dgpg.passphrase="$GPG_PASSPHRASE" deploy
+        run: >
+          mvn -B -P release -DskipTests
+          -Dscala.binary.version=${{ matrix.scala }}
+          -Dscala.version=${{ matrix.scala_full }}
+          -Dgpg.passphrase="$GPG_PASSPHRASE"
+          deploy

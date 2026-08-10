@@ -8,6 +8,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scala: "2.12"
+            scala_full: "2.12.18"
+          - scala: "2.13"
+            scala_full: "2.13.18"
+    name: test (Scala ${{ matrix.scala }})
     steps:
       - uses: actions/checkout@v4
 
@@ -18,4 +27,8 @@ jobs:
           cache: maven
 
       - name: Run tests
-        run: mvn -B test
+        run: >
+          mvn -B
+          -Dscala.binary.version=${{ matrix.scala }}
+          -Dscala.version=${{ matrix.scala_full }}
+          test
