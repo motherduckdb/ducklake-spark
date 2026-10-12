@@ -11,7 +11,7 @@ on:
         description: Version without the leading v, e.g. 0.4.0 or 0.4.0-rc1 (a suffix marks a pre-release)
         required: true
       dry_run:
-        description: Run all checks and build the signed jars, but don't publish to Maven Central or create the release
+        description: Run all checks, build and sign the jars and have Maven Central validate them, but don't publish or create the release
         type: boolean
         default: false
 
@@ -82,18 +82,31 @@ jobs:
       - name: Set pom version
         run: ./mvnw -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
-      # verify builds and signs everything deploy would, without uploading.
+      # Maven Central only validates a bundle server-side, so a dry run uploads too but leaves the
+      # deployment unpublished (VALIDATED); the next step drops it.
       - name: Build, sign, and deploy
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: >
-          ./mvnw -B -P release -DskipTests
-          -Dscala.binary.version=${{ matrix.scala }}
-          -Dscala.version=${{ matrix.scala_full }}
-          -Dgpg.passphrase="$GPG_PASSPHRASE"
-          ${{ inputs.dry_run && 'verify' || 'deploy' }}
+        run: |
+          set -o pipefail
+          ./mvnw -B -P release -DskipTests \
+            -Dscala.binary.version=${{ matrix.scala }} \
+            -Dscala.version=${{ matrix.scala_full }} \
+            -Dgpg.passphrase="$GPG_PASSPHRASE" \
+            ${{ inputs.dry_run && '-Dcentral.autoPublish=false -Dcentral.waitUntil=validated' || '' }} \
+            deploy | tee mvn.log
+
+      - name: Drop the dry-run deployment
+        if: inputs.dry_run
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        run: |
+          id=$(grep -o 'deploymentId: [0-9a-f-]*' mvn.log | head -1 | cut -d' ' -f2)
+          curl -fsS -X DELETE "https://central.sonatype.com/api/v1/publisher/deployment/$id" \
+            -H "Authorization: Bearer $(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)"
 
   release:
     needs: [validate, publish]

@@ -223,6 +223,11 @@
     <profiles>
         <profile>
             <id>release</id>
+            <!-- A dry run overrides these to have Central validate the bundle without publishing it. -->
+            <properties>
+                <central.autoPublish>true</central.autoPublish>
+                <central.waitUntil>published</central.waitUntil>
+            </properties>
             <build>
                 <plugins>
                     <plugin>
@@ -281,8 +286,8 @@
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
-                            <autoPublish>true</autoPublish>
-                            <waitUntil>published</waitUntil>
+                            <autoPublish>${central.autoPublish}</autoPublish>
+                            <waitUntil>${central.waitUntil}</waitUntil>
                         </configuration>
                     </plugin>
                 </plugins>
