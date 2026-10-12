@@ -1,0 +1,106 @@
+name: Release
+
+# The only way to cut a release: pick a main commit with green tests, give it a version.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit on main to release (defaults to the latest)
+        default: main
+      version:
+        description: Version without the leading v, e.g. 0.4.0 or 0.4.0-rc1 (a suffix marks a pre-release)
+        required: true
+      dry_run:
+        description: Run all checks and build the signed jars, but don't publish to Maven Central or create the release
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Validate inputs
+        id: sha
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ && "$VERSION" != *SNAPSHOT* ]] \
+            || { echo "::error::Invalid version '$VERSION'"; exit 1; }
+          if gh api "repos/$GH_REPO/git/ref/tags/v$VERSION" --silent 2>/dev/null; then
+            echo "::error::Tag v$VERSION already exists"; exit 1
+          fi
+          sha=$(gh api "repos/$GH_REPO/commits/${{ inputs.sha }}" -q .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # A successful push run on main proves the commit is on main and its tests passed for both Scala versions.
+      - name: Require green tests on main
+        run: |
+          run_id=$(gh run list --workflow test.yml --branch main --event push --commit "${{ steps.sha.outputs.sha }}" \
+            --status success --json databaseId -q '.[0].databaseId')
+          [ -n "$run_id" ] || { echo "::error::No successful main test run for ${{ steps.sha.outputs.sha }}"; exit 1; }
+
+  # Maven Central first: a published version can't be overwritten, so a GitHub release that
+  # names it must only exist once the artifacts are really there.
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scala: "2.12"
+            scala_full: "2.12.18"
+          - scala: "2.13"
+            scala_full: "2.13.18"
+    name: publish (Scala ${{ matrix.scala }})
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+
+      - name: Set up Java + Maven settings + GPG
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+
+      - name: Set pom version
+        run: mvn -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+
+      # verify builds and signs everything deploy would, without uploading.
+      - name: Build, sign, and deploy
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: >
+          mvn -B -P release -DskipTests
+          -Dscala.binary.version=${{ matrix.scala }}
+          -Dscala.version=${{ matrix.scala_full }}
+          -Dgpg.passphrase="$GPG_PASSPHRASE"
+          ${{ inputs.dry_run && 'verify' || 'deploy' }}
+
+  release:
+    needs: [validate, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release
+        run: |
+          prerelease=$([[ "$VERSION" == *-* ]] && echo --prerelease || true)
+          ${{ inputs.dry_run && 'echo [dry run]' || '' }} gh release create "v$VERSION" \
+            --target "${{ needs.validate.outputs.sha }}" --title "v$VERSION" --generate-notes $prerelease

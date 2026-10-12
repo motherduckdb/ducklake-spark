@@ -227,11 +227,16 @@ CI runs the test suite against both.
 
 ## Releasing
 
-Publishing is fully automated: [create a GitHub release](https://github.com/motherduckdb/ducklake-spark/releases/new)
-with a tag like `v0.3.0`, and the [publish workflow](.github/workflows/publish.yml) builds,
-signs, and deploys `ducklake-spark_2.12` and `ducklake-spark_2.13` to Maven Central. The
-version comes from the tag (the leading `v` is stripped), so the `0.1.0-SNAPSHOT` in
-`pom.xml` never needs to be edited.
+Don't create releases or tags from the GitHub UI. Run the **Release** workflow instead
+(Actions → Release → Run workflow, or `gh workflow run release.yml -f sha=<commit> -f version=0.4.0`):
 
-Artifacts usually appear on Maven Central within a few minutes and cannot be deleted or
-overwritten afterwards, so a mistake means burning a version number.
+- `sha`: a `main` commit whose `Test` run is green.
+- `version`: without the `v`; a suffix such as `0.4.0-rc1` marks a pre-release. The pom's
+  `0.1.0-SNAPSHOT` never needs to be edited.
+- `dry_run`: run every check and build the signed jars, then only print the release command.
+
+The workflow fails if the tag already exists or the commit has no green `main` test run. Otherwise it
+builds, signs and deploys `ducklake-spark_2.12` and `ducklake-spark_2.13` to Maven Central, then creates
+tag `v<version>` on the commit and publishes the GitHub release with auto-generated notes. Maven Central
+goes first because its artifacts cannot be deleted or overwritten, so a mistake means burning a version
+number, and no release ever points at a version that isn't actually published.
