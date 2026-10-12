@@ -80,7 +80,7 @@ jobs:
           gpg-passphrase: GPG_PASSPHRASE
 
       - name: Set pom version
-        run: mvn -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
+        run: ./mvnw -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
       # verify builds and signs everything deploy would, without uploading.
       - name: Build, sign, and deploy
@@ -89,7 +89,7 @@ jobs:
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: >
-          mvn -B -P release -DskipTests
+          ./mvnw -B -P release -DskipTests
           -Dscala.binary.version=${{ matrix.scala }}
           -Dscala.version=${{ matrix.scala_full }}
           -Dgpg.passphrase="$GPG_PASSPHRASE"

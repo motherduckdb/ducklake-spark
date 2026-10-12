@@ -208,10 +208,10 @@ git clone https://github.com/motherduck/ducklake-spark.git
 cd ducklake-spark
 
 # Build the project
-mvn clean package
+./mvnw clean package
 
 # Or build the project without integration tests
-mvn clean package -DskipTests
+./mvnw clean package -DskipTests
 ```
 
 
@@ -220,7 +220,7 @@ Connector fat jar will be in `target/ducklake-spark_2.12-0.1.0-SNAPSHOT.jar`.
 The build defaults to Scala 2.12. To build for 2.13, override both version properties:
 
 ```bash
-mvn clean package -Dscala.binary.version=2.13 -Dscala.version=2.13.18
+./mvnw clean package -Dscala.binary.version=2.13 -Dscala.version=2.13.18
 ```
 
 CI runs the test suite against both.
