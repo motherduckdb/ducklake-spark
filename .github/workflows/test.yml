@@ -28,7 +28,7 @@ jobs:
 
       - name: Run tests
         run: >
-          mvn -B
+          ./mvnw -B
           -Dscala.binary.version=${{ matrix.scala }}
           -Dscala.version=${{ matrix.scala_full }}
           test
